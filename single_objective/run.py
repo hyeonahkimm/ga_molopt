@@ -28,6 +28,8 @@ def main():
     parser.add_argument('--oracles', nargs="+", default=["qed"]) ###
     parser.add_argument('--log_results', action='store_true')
     parser.add_argument('--log_dir', default="./results")
+    parser.add_argument('--wandb', type=str, default="disabled", choices=["online", "offline", "disabled"])
+    parser.add_argument('--run_name', type=str, default="default")
     args = parser.parse_args()
 
 
@@ -43,7 +45,7 @@ def main():
 
     if args.method == 'molleo':
         from main.molleo.run import GB_GA_Optimizer as Optimizer
-    elif args.method == 'molleo':
+    elif args.method == 'ngo':
         from main.ngo.run import GA_Optimizer as Optimizer
 
 

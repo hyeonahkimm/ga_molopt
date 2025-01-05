@@ -188,9 +188,9 @@ class GA_Optimizer(BaseOptimizer):
         #     lm_name = args.mol_lm
         #     self.mol_lm.task = self.args.task_mode
 
-    def _optimize(self, config):
+    def _optimize(self, oracle, config):
 
-        self.oracle.assign_evaluator(self.args)
+        self.oracle.assign_evaluator(oracle)
         
         path_here = os.path.dirname(os.path.realpath(__file__))
         restore_prior_from=os.path.join(path_here, 'data/Prior.ckpt')

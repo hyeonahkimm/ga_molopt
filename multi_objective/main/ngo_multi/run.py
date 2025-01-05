@@ -332,21 +332,21 @@ class GA_Optimizer(BaseOptimizer):
             
         all_smiles, all_scores = tuple(map(list, zip(*[(smi, elem[0]) for (smi, elem) in self.oracle.mol_buffer.items()])))
         all_smiles, all_scores, all_seqs = smiles_to_seqs(all_smiles, all_scores, voc)
-        # all_dist = get_seq_distances(all_seqs.long(), all_seqs.long(), voc)
-        # indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
-        valid_mols, valid_scores, valid_smiles = [], [], []
-        for i, smi in enumerate(all_smiles):
-            try:
-                mol = Chem.MolFromSmiles(smi)
-                if mol is not None:
-                    valid_smiles.append(smi)
-                    valid_scores.append(all_scores[i])
-                    valid_mols.append(mol)
-            except:
-                pass
-        all_dist = get_mol_distances(all_smiles, all_smiles)
-        all_dist = Variable(torch.tensor(all_dist))
+        all_dist = get_seq_distances(all_seqs.long(), all_seqs.long(), voc)
         indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
+        # valid_mols, valid_scores, valid_smiles = [], [], []
+        # for i, smi in enumerate(all_smiles):
+        #     try:
+        #         mol = Chem.MolFromSmiles(smi)
+        #         if mol is not None:
+        #             valid_smiles.append(smi)
+        #             valid_scores.append(all_scores[i])
+        #             valid_mols.append(mol)
+        #     except:
+        #         pass
+        # all_dist = get_mol_distances(all_smiles, all_smiles)
+        # all_dist = Variable(torch.tensor(all_dist))
+        # indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
 
         # select initial population
         population_smiles = [all_smiles[i] for i in indices]
@@ -385,17 +385,19 @@ class GA_Optimizer(BaseOptimizer):
 
             # stats
             old_scores = population_scores
-            population_smiles += offspring_smis  # = [Chem.MolToSmiles(mol) for mol in population_mol]
-            population_scores += offspring_score #self.oracle(population_smiles)
+            population_smiles = [Chem.MolToSmiles(mol) for mol in population_mol]
+            population_scores = self.oracle(population_smiles)
+            # population_smiles += offspring_smis  # = [Chem.MolToSmiles(mol) for mol in population_mol]
+            # population_scores += offspring_score #self.oracle(population_smiles)
             # population_tuples = list(zip(population_scores, population_mol, population_smiles))
             # population_tuples = sorted(population_tuples, key=lambda x: x[0], reverse=True)[:config["population_size"]]
             # _, _, offspring_seqs = smiles_to_seqs(offspring_smis, offspring_score, voc)
             # offspring_dist = get_seq_distances(offspring_seqs.long(), offspring_seqs.long(), voc)
             # population_dist = torch.cat([population_dist, offspring_dist])
-            # population_smiles, population_scores, population_seqs = smiles_to_seqs(population_smiles, population_scores, voc)
-            # population_dist = get_seq_distances(population_seqs.long(), population_seqs.long(), voc)
-            population_dist = get_mol_distances(population_smiles, population_smiles)
-            population_dist = Variable(torch.tensor(population_dist))
+            population_smiles, population_scores, population_seqs = smiles_to_seqs(population_smiles, population_scores, voc)
+            population_dist = get_seq_distances(population_seqs.long(), population_seqs.long(), voc)
+            # population_dist = get_mol_distances(population_smiles, population_smiles)
+            # population_dist = Variable(torch.tensor(population_dist))
             next_indices = select(population_scores, population_dist, config["population_size"])
             population_mol = [population_mol[t] for t in next_indices]
             population_smiles = [population_smiles[t] for t in next_indices]

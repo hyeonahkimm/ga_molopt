@@ -9,6 +9,7 @@ import tdc
 from tdc.generation import MolGen
 from main.utils.chem import *
 import math
+import wandb
 
 
 class Objdict(dict):
@@ -126,7 +127,6 @@ class Oracle:
         avg_sa = np.mean(self.sa_scorer(smis))
         diversity_top100 = self.diversity_evaluator(smis)
 
-
         print(f'{n_calls}/{self.max_oracle_calls} | '
                 f'avg_top1: {avg_top1:.3f} | '
                 f'avg_top10: {avg_top10:.3f} | '
@@ -134,20 +134,34 @@ class Oracle:
                 f'avg_sa: {avg_sa:.3f} | '
                 f'div: {diversity_top100:.3f}')
 
-        print({
-            "avg_top1": avg_top1,
-            "avg_top10": avg_top10,
-            "avg_top100": avg_top100,
-            "auc_top1": top_auc(self.mol_buffer, 1, finish, self.freq_log, self.max_oracle_calls),
-            "auc_top10": top_auc(self.mol_buffer, 10, finish, self.freq_log, self.max_oracle_calls),
-            "auc_top100": top_auc(self.mol_buffer, 100, finish, self.freq_log, self.max_oracle_calls),
-            "avg_sa": avg_sa,
-            "diversity_top100": diversity_top100,
-            "n_oracle": n_calls,
-        })
-
-
-
+        try:
+            wandb.log({
+                "avg_top1": avg_top1, 
+                "avg_top10": avg_top10, 
+                "avg_top100": avg_top100, 
+                "auc_top1": top_auc(self.mol_buffer, 1, finish, self.freq_log, self.max_oracle_calls),
+                "auc_top10": top_auc(self.mol_buffer, 10, finish, self.freq_log, self.max_oracle_calls),
+                "auc_top100": top_auc(self.mol_buffer, 100, finish, self.freq_log, self.max_oracle_calls),
+                "avg_sa": avg_sa,
+                "diversity_top100": diversity_top100,
+                "n_oracle": n_calls,
+                # "best_mol": wandb.Image(Draw.MolsToGridImage([Chem.MolFromSmiles(item[0]) for item in temp_top10], 
+                #           molsPerRow=5, subImgSize=(200,200), legends=[f"f = {item[1][0]:.3f}, #oracle = {item[1][1]}" for item in temp_top10]))
+            })
+            if n_calls > 9900:
+                print("auc_top10:", top_auc(self.mol_buffer, 10, finish, self.freq_log, self.max_oracle_calls))
+        except:
+            print({
+                "avg_top1": avg_top1,
+                "avg_top10": avg_top10,
+                "avg_top100": avg_top100,
+                "auc_top1": top_auc(self.mol_buffer, 1, finish, self.freq_log, self.max_oracle_calls),
+                "auc_top10": top_auc(self.mol_buffer, 10, finish, self.freq_log, self.max_oracle_calls),
+                "auc_top100": top_auc(self.mol_buffer, 100, finish, self.freq_log, self.max_oracle_calls),
+                "avg_sa": avg_sa,
+                "diversity_top100": diversity_top100,
+                "n_oracle": n_calls,
+            })
 
     def __len__(self):
         return len(self.mol_buffer)
@@ -322,18 +336,22 @@ class BaseOptimizer:
     def _optimize(self, oracle, config):
         raise NotImplementedError
 
-
-
-    def optimize(self, oracle, config, seed=0, project="test"):
-
+    def optimize(self, oracle, config, seed=0):
+        if self.args.wandb != 'disabled':
+            project = 'NeuralGA-PMO'
+            run = wandb.init(project=project, group=oracle.name, config=config, reinit=True)
+            wandb.config.oracle = oracle.name
+            wandb.config.method = self.args.method
+            wandb.run.name = oracle.name + "_" + self.args.method + "_" + self.args.run_name + "_" + str(seed) + "_" + wandb.run.id
+            
         np.random.seed(seed)
         torch.manual_seed(seed)
         random.seed(seed)
         self.seed = seed
-        self.oracle.task_label = self.args.mol_lm + "_" + oracle.name + "_" + str(seed)
+        self.oracle.task_label = self.args.method + "_" + oracle.name + "_" + str(seed)
         self._optimize(oracle, config)
         if self.args.log_results:
             self.log_result()
-        self.save_result(self.args.mol_lm + "_" + oracle.name + "_" + str(seed))
+        self.save_result(self.args.method + "_" + oracle.name + "_" + str(seed))
         self.reset()
 
