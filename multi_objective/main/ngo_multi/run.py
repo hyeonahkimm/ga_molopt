@@ -215,7 +215,7 @@ class GA_Optimizer(BaseOptimizer):
             param.requires_grad = False
 
         # optimizer = torch.optim.Adam(Agent.rnn.parameters(), lr=config['learning_rate'])
-        log_z = torch.nn.Parameter(torch.tensor([5.]).cuda())
+        log_z = torch.nn.Parameter(torch.tensor([5.]).cuda()) if torch.cuda.is_available() else torch.nn.Parameter(torch.tensor([5.]))
         optimizer = torch.optim.Adam([{'params': Agent.rnn.parameters(), 
                                         'lr': config['learning_rate']},
                                     {'params': log_z, 
@@ -314,8 +314,8 @@ class GA_Optimizer(BaseOptimizer):
                 if new_scores == old_scores:
                     patience += 1
                     if patience >= self.args.patience:
-                        self.log_intermediate(finish=True)
-                        print('convergence criteria met, abort ...... ')
+                        # self.log_intermediate(finish=True)
+                        # print('convergence criteria met, abort ...... ')
                         break
                 else:
                     patience = 0

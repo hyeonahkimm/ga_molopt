@@ -1,0 +1,13 @@
+population_size: 100
+offspring_size: 5
+mutation_rate: 0.01
+learning_rate: 0.0005
+batch_size: 64
+num_keep: 10000
+experience_loop: 8
+experience_replay: 0
+lr_z: 0.1
+beta: 25
+rank_coefficient: 0.01
+max_training: 8000
+sigma: 500
