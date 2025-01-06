@@ -11,3 +11,4 @@ beta: 25
 rank_coefficient: 0.01
 max_training: 0
 sigma: 500
+gfn: True

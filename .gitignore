@@ -140,3 +140,4 @@ result*.yaml
 *.out
 production_*.sh
 *.ipynb
+*.pyc

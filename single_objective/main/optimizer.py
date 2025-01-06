@@ -303,6 +303,13 @@ class BaseOptimizer:
         with open(output_file_path, 'w') as f:
             yaml.dump(self.mol_buffer, f, sort_keys=False)
 
+    def save_intermediate_result(self):
+        print("Saving molecules...")
+        output_file_path = os.path.join(self.args.output_dir, 'inter_' + self.oracle.task_label + '.yaml')
+        self.sort_buffer()
+        with open(output_file_path, 'w') as f:
+            yaml.dump(self.mol_buffer, f, sort_keys=False)
+
     def _analyze_results(self, results):
         results = results[:100]
         scores_dict = {item[0]: item[1][0] for item in results}
@@ -340,6 +347,7 @@ class BaseOptimizer:
         if self.args.wandb != 'disabled':
             project = 'NeuralGA-PMO'
             run = wandb.init(project=project, group=oracle.name, config=config, reinit=True)
+            wandb.config.run_name = self.args.run_name
             wandb.config.oracle = oracle.name
             wandb.config.method = self.args.method
             wandb.run.name = oracle.name + "_" + self.args.method + "_" + self.args.run_name + "_" + str(seed) + "_" + wandb.run.id

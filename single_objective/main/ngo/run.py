@@ -16,7 +16,7 @@ from main.optimizer import BaseOptimizer
 #from main.graph_ga.mol_lm import MolCLIP
 # from main.molleo_multi.biot5 import BioT5
 # from main.molleo_multi.GPT4 import GPT4
-from utils import get_fp_scores
+# from utils import get_fp_scores
 # from network import create_and_train_network, obtain_model_pred
 import torch
 import os
@@ -225,17 +225,17 @@ class GA_Optimizer(BaseOptimizer):
 
         # pool = joblib.Parallel(n_jobs=self.n_jobs)
         
-        if self.smi_file is not None:
-            # Exploitation run
-            starting_population = self.all_smiles[:config["population_size"]]
-        else:
-            # Exploration run
-            starting_population = np.random.choice(self.all_smiles, config["population_size"])
+        # if self.smi_file is not None:
+        #     # Exploitation run
+        #     starting_population = self.all_smiles[:config["population_size"]]
+        # else:
+        #     # Exploration run
+        #     starting_population = np.random.choice(self.all_smiles, config["population_size"])
 
-        # select initial population
-        population_smiles = starting_population
-        population_mol = [Chem.MolFromSmiles(s) for s in population_smiles]
-        population_scores = self.oracle([Chem.MolToSmiles(mol) for mol in population_mol])
+        # # select initial population
+        # population_smiles = starting_population
+        # population_mol = [Chem.MolFromSmiles(s) for s in population_smiles]
+        # population_scores = self.oracle([Chem.MolToSmiles(mol) for mol in population_mol])
         
         # experience.add_experience(zip(population_smiles, population_scores))
 
@@ -318,140 +318,147 @@ class GA_Optimizer(BaseOptimizer):
                         break
                 else:
                     patience = 0
-
-        print("Starting GA")
-        patience = 0
-
-        if len(self.oracle) > 100:
-            self.sort_buffer()
-            old_score = np.mean([item[1][0] for item in list(self.mol_buffer.items())[:100]])
-        else:
-            old_score = 0
-            
-        all_smiles, all_scores = tuple(map(list, zip(*[(smi, elem[0]) for (smi, elem) in self.oracle.mol_buffer.items()])))
-        all_smiles, all_scores, all_seqs = smiles_to_seqs(all_smiles, all_scores, voc)
-        all_dist = get_seq_distances(all_seqs.long(), all_seqs.long(), voc)
-        indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
-        # valid_mols, valid_scores, valid_smiles = [], [], []
-        # for i, smi in enumerate(all_smiles):
-        #     try:
-        #         mol = Chem.MolFromSmiles(smi)
-        #         if mol is not None:
-        #             valid_smiles.append(smi)
-        #             valid_scores.append(all_scores[i])
-        #             valid_mols.append(mol)
-        #     except:
-        #         pass
-        # all_dist = get_mol_distances(all_smiles, all_smiles)
-        # all_dist = Variable(torch.tensor(all_dist))
-        # indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
-
-        # select initial population
-        population_smiles = [all_smiles[i] for i in indices]
-        population_scores = [all_scores[i] for i in indices]
-        population_mol = [Chem.MolFromSmiles(s) for s in population_smiles]
         
-        population_smiles, population_scores, population_seqs = smiles_to_seqs(population_smiles, population_scores, voc)
-        population_dist = get_seq_distances(population_seqs.long(), population_seqs.long(), voc)
-        
-        while True:
+        # self.save_intermediate_result()
 
-            # new_population
-            # import pdb; pdb.set_trace()
-            mating_tuples = make_mating_pool(population_mol, population_smiles, population_scores, config["population_size"])
-            
-            reproduced_smis = [reproduce(mating_tuples, config["mutation_rate"], Agent) for _ in range(config["offspring_size"])]
-            
-            offspring_smis, offspring_mol = [], []
-            for smis in reproduced_smis:
-                try:
-                    mol = Chem.MolFromSmiles(smis)
-                    if mol != None:
-                        offspring_smis.append(smis)
-                        offspring_mol.append(mol)
-                except:
-                    pass
-            
-            offspring_score = self.oracle(offspring_smis)
-            new_experience = zip(offspring_smis, offspring_score)
-            print(len(self.oracle), np.max(offspring_score), np.mean(offspring_score))
-            experience.add_experience(new_experience)
+        if config['max_training'] < 10000:
+            print("Starting GA")
+            patience = 0
 
-            # add new_population
-            population_mol += offspring_mol
-            population_mol = self.sanitize(population_mol)
-
-            # stats
-            old_scores = population_scores
-            population_smiles = [Chem.MolToSmiles(mol) for mol in population_mol]
-            population_scores = self.oracle(population_smiles)
-            # population_smiles += offspring_smis  # = [Chem.MolToSmiles(mol) for mol in population_mol]
-            # population_scores += offspring_score #self.oracle(population_smiles)
-            # population_tuples = list(zip(population_scores, population_mol, population_smiles))
-            # population_tuples = sorted(population_tuples, key=lambda x: x[0], reverse=True)[:config["population_size"]]
-            # _, _, offspring_seqs = smiles_to_seqs(offspring_smis, offspring_score, voc)
-            # offspring_dist = get_seq_distances(offspring_seqs.long(), offspring_seqs.long(), voc)
-            # population_dist = torch.cat([population_dist, offspring_dist])
-            population_smiles, population_scores, population_seqs = smiles_to_seqs(population_smiles, population_scores, voc)
-            population_dist = get_seq_distances(population_seqs.long(), population_seqs.long(), voc)
-            # population_dist = get_mol_distances(population_smiles, population_smiles)
-            # population_dist = Variable(torch.tensor(population_dist))
-            next_indices = select(population_scores, population_dist, config["population_size"])
-            population_mol = [population_mol[t] for t in next_indices]
-            population_smiles = [population_smiles[t] for t in next_indices]
-            population_scores = [population_scores[t] for t in next_indices]
-            
-            # Experience Replay
-            # First sample
-            avg_loss = 0.
-            if config['experience_replay'] and len(experience) > config['experience_replay']:
-                for _ in range(config['experience_loop']):
-                    if config['rank_coefficient'] > 0:
-                        exp_seqs, exp_score = experience.rank_based_sample(config['experience_replay'], config['rank_coefficient'])
-                    else:
-                        exp_seqs, exp_score = experience.sample(config['experience_replay'])
-
-                    exp_agent_likelihood, _ = Agent.likelihood(exp_seqs.long())
-                    prior_agent_likelihood, _ = Prior.likelihood(exp_seqs.long())
-
-                    reward = torch.tensor(exp_score).cuda() if torch.cuda.is_available() else torch.tensor(exp_score)
-
-                    exp_forward_flow = exp_agent_likelihood + log_z
-                    exp_backward_flow = reward * config['beta']
-                    
-                    exp_backward_flow += prior_agent_likelihood.detach()  # rtb-style
-                    loss = torch.pow(exp_forward_flow - exp_backward_flow, 2).mean()
-
-                    # KL penalty
-                    # if config['penalty'] == 'prior_kl':
-                    # loss_p = (exp_agent_likelihood - prior_agent_likelihood).mean()
-                    # loss += 0.01*loss_p
-
-                    # print(loss.item())
-                    avg_loss += loss.item()/config['experience_loop']
-
-                    optimizer.zero_grad()
-                    loss.backward()
-                    # grad_norms = torch.nn.utils.clip_grad_norm_(Agent.rnn.parameters(), 1.0)
-                    optimizer.step()
-            # print(avg_loss)
-
-            ### early stopping
             if len(self.oracle) > 100:
                 self.sort_buffer()
-                new_score = np.mean([item[1][0] for item in list(self.mol_buffer.items())[:100]])
-                # import ipdb; ipdb.set_trace()
-                if (new_score - old_score) < 1e-3:
-                    patience += 1
-                    if patience >= self.args.patience:
-                        self.log_intermediate(finish=True)
-                        print('convergence criteria met, abort ...... ')
-                        break
-                else:
-                    patience = 0
-
-                old_score = new_score
+                old_score = np.mean([item[1][0] for item in list(self.mol_buffer.items())[:100]])
+            else:
+                old_score = 0
                 
-            if self.finish:
-                break
+            all_smiles, all_scores = tuple(map(list, zip(*[(smi, elem[0]) for (smi, elem) in self.oracle.mol_buffer.items()])))
+            all_smiles, all_scores, all_seqs = smiles_to_seqs(all_smiles, all_scores, voc)
+            # all_dist = get_seq_distances(all_seqs.long(), all_seqs.long(), voc)
+            # indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
+            valid_mols, valid_scores, valid_smiles = [], [], []
+            for i, smi in enumerate(all_smiles):
+                try:
+                    mol = Chem.MolFromSmiles(smi)
+                    if mol is not None:
+                        valid_smiles.append(smi)
+                        valid_scores.append(all_scores[i])
+                        valid_mols.append(mol)
+                except:
+                    pass
+            all_dist = get_mol_distances(all_smiles, all_smiles)
+            all_dist = Variable(torch.tensor(all_dist))
+            indices = select(all_scores, all_dist, config["population_size"])  #np.random.choice(np.arange(len(all_smiles)), config["population_size"], replace=False)
 
+            # select initial population
+            population_smiles = [all_smiles[i] for i in indices]
+            population_scores = [all_scores[i] for i in indices]
+            population_mol = [Chem.MolFromSmiles(s) for s in population_smiles]
+            
+            population_smiles, population_scores, population_seqs = smiles_to_seqs(population_smiles, population_scores, voc)
+            population_dist = get_seq_distances(population_seqs.long(), population_seqs.long(), voc)
+            
+            while True:
+
+                # new_population
+                # import pdb; pdb.set_trace()
+                mating_tuples = make_mating_pool(population_mol, population_smiles, population_scores, config["population_size"])
+                
+                reproduced_smis = [reproduce(mating_tuples, config["mutation_rate"], Agent) for _ in range(config["offspring_size"])]
+                
+                offspring_smis, offspring_mol = [], []
+                for smis in reproduced_smis:
+                    try:
+                        mol = Chem.MolFromSmiles(smis)
+                        if mol != None:
+                            offspring_smis.append(smis)
+                            offspring_mol.append(mol)
+                    except:
+                        pass
+                
+                offspring_score = self.oracle(offspring_smis)
+                new_experience = zip(offspring_smis, offspring_score)
+                print(len(self.oracle), np.max(offspring_score), np.mean(offspring_score))
+                experience.add_experience(new_experience)
+
+                # add new_population
+                population_mol += offspring_mol
+                population_mol = self.sanitize(population_mol)
+
+                # stats
+                old_scores = population_scores
+                # population_smiles = [Chem.MolToSmiles(mol) for mol in population_mol]
+                # population_scores = self.oracle(population_smiles)
+                population_smiles += offspring_smis  # = [Chem.MolToSmiles(mol) for mol in population_mol]
+                population_scores += offspring_score #self.oracle(population_smiles)
+                # population_tuples = list(zip(population_scores, population_mol, population_smiles))
+                # population_tuples = sorted(population_tuples, key=lambda x: x[0], reverse=True)[:config["population_size"]]
+                # _, _, offspring_seqs = smiles_to_seqs(offspring_smis, offspring_score, voc)
+                # offspring_dist = get_seq_distances(offspring_seqs.long(), offspring_seqs.long(), voc)
+                # population_dist = torch.cat([population_dist, offspring_dist])
+                # population_smiles, population_scores, population_seqs = smiles_to_seqs(population_smiles, population_scores, voc)
+                # population_dist = get_seq_distances(population_seqs.long(), population_seqs.long(), voc)
+                population_dist = get_mol_distances(population_smiles, population_smiles)
+                population_dist = Variable(torch.tensor(population_dist))
+                if (len(population_dist) != len(population_scores)) or (len(population_mol) != len(population_scores)):
+                    import pdb; pdb.set_trace()
+                next_indices = select(population_scores, population_dist, config["population_size"])
+                population_mol = [population_mol[t] for t in next_indices]
+                population_smiles = [population_smiles[t] for t in next_indices]
+                population_scores = [population_scores[t] for t in next_indices]
+                
+                # Experience Replay
+                # First sample
+                avg_loss = 0.
+                if config['experience_replay'] and len(experience) > config['experience_replay']:
+                    for _ in range(config['experience_loop']):
+                        if config['rank_coefficient'] > 0:
+                            exp_seqs, exp_score = experience.rank_based_sample(config['experience_replay'], config['rank_coefficient'])
+                        else:
+                            exp_seqs, exp_score = experience.sample(config['experience_replay'])
+
+                        exp_agent_likelihood, _ = Agent.likelihood(exp_seqs.long())
+                        prior_agent_likelihood, _ = Prior.likelihood(exp_seqs.long())
+
+                        reward = torch.tensor(exp_score).cuda() if torch.cuda.is_available() else torch.tensor(exp_score)
+
+                        exp_forward_flow = exp_agent_likelihood + log_z
+                        exp_backward_flow = reward * config['beta']
+                        
+                        exp_backward_flow += prior_agent_likelihood.detach()  # rtb-style
+                        loss = torch.pow(exp_forward_flow - exp_backward_flow, 2).mean()
+
+                        # KL penalty
+                        # if config['penalty'] == 'prior_kl':
+                        # loss_p = (exp_agent_likelihood - prior_agent_likelihood).mean()
+                        # loss += 0.01*loss_p
+
+                        # print(loss.item())
+                        avg_loss += loss.item()/config['experience_loop']
+
+                        optimizer.zero_grad()
+                        loss.backward()
+                        # grad_norms = torch.nn.utils.clip_grad_norm_(Agent.rnn.parameters(), 1.0)
+                        optimizer.step()
+                # print(avg_loss)
+
+                ### early stopping
+                if len(self.oracle) > 100:
+                    self.sort_buffer()
+                    new_score = np.mean([item[1][0] for item in list(self.mol_buffer.items())[:100]])
+                    # import ipdb; ipdb.set_trace()
+                    if (new_score - old_score) < 1e-3:
+                        patience += 1
+                        if patience >= self.args.patience:
+                            self.log_intermediate(finish=True)
+                            print('convergence criteria met, abort ...... ')
+                            break
+                    else:
+                        patience = 0
+
+                    old_score = new_score
+                    
+                if self.finish:
+                    break
+        else:
+            self.log_intermediate(finish=True)
+            print('convergence criteria met, abort ...... ')

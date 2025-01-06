@@ -50,6 +50,8 @@ def main():
         from main.molleo_multi_pareto.run import GB_GA_Optimizer as Optimizer
     elif args.method == 'ngo_multi':
         from main.ngo_multi.run import GA_Optimizer as Optimizer
+    elif args.method == 'ngo_gfn_multi':
+        from main.ngo_gfn_multi.run import Amortized_GA_Optimizer as Optimizer
     else:
         raise ValueError("Unrecognized method name.")
 

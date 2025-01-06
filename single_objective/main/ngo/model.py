@@ -101,13 +101,14 @@ class RNN():
             log_prob = F.log_softmax(logits / temp, dim = 1)
             ### For NGO ###
             if mask is not None:
-                if torch.rand(1) > mutation_rate:  # mutation - without mask
+                # import pdb; pdb.set_trace()
+                if torch.rand(1) > mutation_rate or (prob * mask).sum() > 0.5:  # mutation - without mask
                     prob *= mask
             ###############
             x = torch.multinomial(prob, num_samples=1).view(-1)
             # x = prob.argmax()
             sequences.append(x.view(-1, 1))
-            log_probs +=  NLLLoss(log_prob, x)
+            log_probs += NLLLoss(log_prob, x)
             entropy += -torch.sum((log_prob * prob), 1)
 
             x = Variable(x.data)
