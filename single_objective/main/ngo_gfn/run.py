@@ -217,25 +217,28 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                 pop_smis, pop_scores, pop_novelty = ga_handler.select(all_smis, all_scores, all_novelty, rank_coefficient=config['rank_coefficient'], replace=False)
                 # population = (pop_smis, pop_scores)
                 
+                termination=False
                 for _ in range(config['reinitiation_interval']):
                     child_smis, child_n_atoms, _, _ = ga_handler.query(
                             query_size=config['offspring_size'], mating_pool=(pop_smis, pop_scores), pool=pool, model=Agent,
-                            rank_coefficient=config['rank_coefficient'], 
+                            rank_coefficient=config['rank_coefficient'], mating_rule=config['mating_rule']
                         )
 
                     child_score = np.array(self.oracle(child_smis))
                     # print(len(self.oracle), '| child_score:', child_score.mean(), child_score.max())
                     
                     # log likelihood to measure novelty
+                    # valid_child_smis, valid_child_score = child_smis, child_score.tolist() #
                     valid_child_smis, valid_child_score, valid_child_seqs = smiles_to_seqs(child_smis, child_score, voc)
+
                     
-                    if config['use_novelty']:
-                        # with torch.no_grad():
-                        #     child_likelihood, _ = Agent.likelihood(valid_child_seqs.long())
-                        # child_novelty = (-1) * child_likelihood.cpu().numpy()
-                        child_novelty = novelty(valid_child_smis, pop_smis)
-                    else:
-                        child_novelty = None
+                    # if config['use_novelty']:
+                    #     # with torch.no_grad():
+                    #     #     child_likelihood, _ = Agent.likelihood(valid_child_seqs.long())
+                    #     # child_novelty = (-1) * child_likelihood.cpu().numpy()
+                    #     child_novelty = novelty(valid_child_smis, pop_smis)
+                    # else:
+                    #     child_novelty = None
                 
                     new_experience = zip(child_smis, child_score)
                     experience.add_experience(new_experience)
@@ -296,36 +299,43 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                                 optimizer.step()
                         print(avg_loss)
                         
-                # early stopping
-                if len(self.oracle) > 1000:
-                    self.sort_buffer()
-                    new_scores = [item[1][0] for item in list(self.mol_buffer.items())[:100]]
-                    if new_scores == old_scores:
-                        patience += 1
-                        # ga_handler.temp = min(0.2 + ga_handler.temp, 2.0)
-                        if patience >= self.args.patience:
-                            self.log_intermediate(finish=True)
-                            print('convergence criteria met, abort ...... ')
-                            break
-                    else:
-                        patience = 0
-                        ga_handler.temp = 1
+                    # early stopping
+                    if len(self.oracle) > 1000:
+                        self.sort_buffer()
+                        new_scores = [item[1][0] for item in list(self.mol_buffer.items())[:100]]
+                        if new_scores == old_scores:
+                            patience += 1
+                            # ga_handler.temp = min(0.2 + ga_handler.temp, 2.0)
+                            if patience >= self.args.patience:
+                                # self.log_intermediate(finish=True)
+                                print('convergence criteria met (max patience), abort ...... ')
+                                termination = True
+                                break
+                        else:
+                            patience = 0
+                            ga_handler.temp = 1
 
-                # early stopping
-                if prev_n_oracles < len(self.oracle):
-                    stuck_cnt = 0
-                else:
-                    stuck_cnt += 1
-                    if stuck_cnt >= 10:
-                        self.log_intermediate(finish=True)
-                        print('cannot find new molecules, abort ...... ')
-                        break
-                    
+                    # early stopping
+                    if prev_n_oracles < len(self.oracle):
+                        stuck_cnt = 0
+                    else:
+                        stuck_cnt += 1
+                        if stuck_cnt >= 10:
+                            # self.log_intermediate(finish=True)
+                            print('cannot find new molecules (max stuck counts), abort ...... ')
+                            termination = True
+                            break
+                    prev_n_oracles = len(self.oracle)
+
                 if self.finish:
                     print('max oracle hit')
                     break
                 
-                prev_n_oracles = len(self.oracle)
+                if termination:
+                    self.log_intermediate(finish=True)
+                    print('cannot find new molecules, abort ...... ')
+                    break
+                
                 step += 1
                 
 
@@ -349,6 +359,7 @@ def smiles_to_seqs(smiles, scores, voc, unique=False):
 def novelty(new_smiles, ref_smiles):
     evaluator = Evaluator(name = 'Diversity')  # pairwise
     novelty_scores = []
+    valid_ref_smiles = sanitize(ref_smiles)
     for d in new_smiles:
         dist = np.array([evaluator([d, od]) for od in ref_smiles])
         novelty_scores.append(np.nan_to_num(dist).mean())

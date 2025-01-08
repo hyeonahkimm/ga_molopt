@@ -4,7 +4,7 @@ num_keep: 1024
 experience_loop: 8
 experience_replay: 128
 lr_z: 0.1
-beta: 25
+beta: 50
 mutation_rate: 0.067
 population_size: 120
 offspring_size: 70
@@ -17,4 +17,4 @@ kl_coefficient: 0.01
 starting_ga_from: 0
 use_novelty: True
 update_during_ga: True
-mating_rule: rank_based
+mating_pool: reward_prioritized

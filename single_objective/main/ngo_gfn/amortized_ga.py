@@ -90,7 +90,7 @@ def make_mating_pool(population_smi, population_mol: List[Mol], population_score
         population_probs = [p / sum_scores for p in population_scores]
         # mating_pool = np.random.choice(population_mol, p=population_probs, size=offspring_size, replace=True)
         indices = np.random.choice(np.arange(len(population_mol)), p=population_probs, size=population_size, replace=True)
-        mating_pool = [population_mol[i] for i in indices if population_mol[i] is not None]
+        mating_pool = [population_smi[i] for i in indices if population_mol[i] is not None]
         mating_pool_score = [population_scores[i] for i in indices if population_mol[i] is not None]
 
     return mating_pool, mating_pool_score
@@ -134,7 +134,7 @@ class GeneticOperatorHandler:
     def select(self, population_smi, population_scores, novelty=None, rank_coefficient=0.01, replace=False):
         return select_next(population_smi, population_scores, novelty, min(len(population_scores), self.population_size), rank_coefficient, replace=replace)
 
-    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None):
+    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based'):
         # print(mating_pool)
         if mutation_rate is None:
             mutation_rate = self.mutation_rate
@@ -143,7 +143,10 @@ class GeneticOperatorHandler:
         population_scores = mating_pool[1]
 
         # mating pool: List[smiles]
-        cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient)
+        if mating_rule == 'rank_based':
+            cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient)
+        else:
+            cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient=0.)
 
         # print(model.rnn.device)
 

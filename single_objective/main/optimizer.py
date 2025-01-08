@@ -180,7 +180,10 @@ class Oracle:
             return 0
         if smi is None:
             return 0
-        mol = Chem.MolFromSmiles(smi)
+        try:
+            mol = Chem.MolFromSmiles(smi)
+        except:
+            mol = None
         if mol is None or len(smi) == 0:
             return 0
         else:
