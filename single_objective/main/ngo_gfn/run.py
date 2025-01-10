@@ -209,7 +209,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     # with torch.no_grad():
                     #     pop_likelihood, _ = Agent.likelihood(all_seqs.long())
                     # novelty = (-1) * pop_likelihood.cpu().numpy()
-                    all_novelty = None #novelty(all_smis, all_smis)
+                    all_novelty = None  # novelty(all_smis, all_smis)
                 else:
                     all_novelty = None
 
@@ -217,8 +217,14 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                 pop_smis, pop_scores, pop_novelty = ga_handler.select(all_smis, all_scores, all_novelty, rank_coefficient=config['rank_coefficient'], replace=False)
                 # population = (pop_smis, pop_scores)
                 
-                termination=False
+                termination = False
                 for _ in range(config['reinitiation_interval']):
+                    if len(self.oracle) > 100:
+                        self.sort_buffer()
+                        old_scores = [item[1][0] for item in list(self.mol_buffer.items())[:100]]
+                    else:
+                        old_scores = 0
+
                     child_smis, child_n_atoms, _, _ = ga_handler.query(
                             query_size=config['offspring_size'], mating_pool=(pop_smis, pop_scores), pool=pool, model=Agent,
                             rank_coefficient=config['rank_coefficient'], mating_rule=config['mating_rule']
