@@ -61,7 +61,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
             param.requires_grad = False
 
         # optimizer = torch.optim.Adam(Agent.rnn.parameters(), lr=config['learning_rate'])
-        log_z = torch.nn.Parameter(torch.tensor([5.]).cuda())
+        log_z = torch.nn.Parameter(torch.tensor([5.]).cuda()) if torch.cuda.is_available() else torch.nn.Parameter(torch.tensor([5.]))
         optimizer = torch.optim.Adam([{'params': Agent.rnn.parameters(), 
                                         'lr': config['learning_rate']},
                                     {'params': log_z, 
@@ -116,6 +116,8 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     patience += 1
                     if patience >= self.args.patience:
                         # self.log_intermediate(finish=True)
+                        if config['starting_ga_from'] == 10000:
+                            self.log_intermediate(finish=True)
                         print('convergence criteria met, abort ...... ')
                         break
                 else:
@@ -128,10 +130,13 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                 stuck_cnt += 1
                 if stuck_cnt >= 10:
                     # self.log_intermediate(finish=True)
+                    if config['starting_ga_from'] == 10000:
+                        self.log_intermediate(finish=True)
                     print('cannot find new molecules, abort ...... ')
                     break
             
             prev_n_oracles = len(self.oracle)
+            prev_updated = 0
 
             # Calculate augmented likelihood
             # augmented_likelihood = prior_likelihood.float() + 500 * Variable(score).float()
@@ -158,7 +163,9 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     reward = torch.tensor(exp_score).cuda()
 
                     exp_forward_flow = exp_agent_likelihood + log_z
-                    exp_backward_flow = reward * config['beta']
+                    # exp_backward_flow = reward * config['beta']
+                    exp_backward_flow = (reward * min(1000, config['beta'] * (len(self.oracle) // 500 + 1))) if config['beta_annealing'] else (reward * config['beta'])
+
                     if config['penalty'] == 'rtb':
                         exp_backward_flow += prior_agent_likelihood.detach()  # rtb-style
                     loss = torch.pow(exp_forward_flow - exp_backward_flow, 2).mean()
@@ -214,20 +221,21 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     all_novelty = None
 
                 # mating_pool = (pop_smis[:config['num_keep']], pop_scores[:config['num_keep']])
-                pop_smis, pop_scores, pop_novelty = ga_handler.select(all_smis, all_scores, all_novelty, rank_coefficient=config['rank_coefficient'], replace=False)
+                pop_smis, pop_scores, _ = ga_handler.select(all_smis, all_scores, all_novelty, rank_coefficient=config['rank_coefficient'], replace=False)
                 # population = (pop_smis, pop_scores)
                 
                 termination = False
-                for _ in range(config['reinitiation_interval']):
+                for ga_i in range(config['reinitiation_interval']):
                     if len(self.oracle) > 100:
                         self.sort_buffer()
                         old_scores = [item[1][0] for item in list(self.mol_buffer.items())[:100]]
                     else:
                         old_scores = 0
 
+                    pop_distances = get_pw_distances(pop_smis, pop_smis) if 'novelty' in config['mating_rule'] else None
                     child_smis, child_n_atoms, _, _ = ga_handler.query(
                             query_size=config['offspring_size'], mating_pool=(pop_smis, pop_scores), pool=pool, model=Agent,
-                            rank_coefficient=config['rank_coefficient'], mating_rule=config['mating_rule']
+                            rank_coefficient=config['rank_coefficient'], mating_rule=config['mating_rule'], pw_distances=pop_distances,
                         )
 
                     child_score = np.array(self.oracle(child_smis))
@@ -251,7 +259,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     pop_smis, pop_scores, _ = ga_handler.select(pop_smis+valid_child_smis, 
                                                                             pop_scores+valid_child_score, 
                                                                             # np.concatenate([pop_novelty, child_novelty]) if config['use_novelty'] else None, 
-                                                                            novelty(pop_smis+valid_child_smis, pop_smis+valid_child_smis) if config['use_novelty'] else None, 
+                                                                            get_pw_distances(pop_smis+valid_child_smis, pop_smis+valid_child_smis) if config['use_novelty'] else None, 
                                                                             rank_coefficient=config['rank_coefficient'], 
                                                                             replace=False)
                     
@@ -268,7 +276,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                         print('max oracle hit')
                         break
                     
-                    if config['update_during_ga']:
+                    if config['update_during_ga'] and len(self.oracle) > prev_updated + config['update_thr']:
                         # Experience Replay
                         # First sample
                         avg_loss = 0.
@@ -282,10 +290,11 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                                 exp_agent_likelihood, _ = Agent.likelihood(exp_seqs.long())
                                 prior_agent_likelihood, _ = Prior.likelihood(exp_seqs.long())
 
-                                reward = torch.tensor(exp_score).cuda()
+                                reward = torch.tensor(exp_score).cuda() if torch.cuda.is_available() else torch.tensor(exp_score)
 
                                 exp_forward_flow = exp_agent_likelihood + log_z
-                                exp_backward_flow = reward * config['beta']
+                                exp_backward_flow = (reward * min(100, config['beta'] * (len(self.oracle) // 500 + 1))) if config['beta_annealing'] else (reward * config['beta'])
+                                # exp_backward_flow = (reward * min(100, config['beta'] * (len(self.oracle) // 200 + 1))) if config['beta_annealing'] else (reward * config['beta'])
                                 
                                 if config['penalty'] == 'rtb':
                                     exp_backward_flow += prior_agent_likelihood.detach()  # rtb-style
@@ -304,6 +313,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                                 # grad_norms = torch.nn.utils.clip_grad_norm_(Agent.rnn.parameters(), 1.0)
                                 optimizer.step()
                         print(avg_loss)
+                        prev_updated = len(self.oracle)
                         
                     # early stopping
                     if len(self.oracle) > 1000:
@@ -326,7 +336,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                         stuck_cnt = 0
                     else:
                         stuck_cnt += 1
-                        if stuck_cnt >= 10:
+                        if stuck_cnt >= 10 and len(self.oracle) > 1000:
                             # self.log_intermediate(finish=True)
                             print('cannot find new molecules (max stuck counts), abort ...... ')
                             termination = True
@@ -362,7 +372,7 @@ def smiles_to_seqs(smiles, scores, voc, unique=False):
     return valid_smis, valid_scores, valid_seqs
 
 
-def novelty(new_smiles, ref_smiles):
+def get_pw_distances(new_smiles, ref_smiles):
     evaluator = Evaluator(name = 'Diversity')  # pairwise
     novelty_scores = []
     valid_ref_smiles = sanitize(ref_smiles)

@@ -60,7 +60,7 @@ def select_next(population_smi, population_scores, novelty, population_size: int
     return next_pop, next_pop_score, None
 
 
-def make_mating_pool(population_smi, population_mol: List[Mol], population_scores, population_size: int, rank_coefficient=0.01):
+def make_mating_pool(population_smi, population_mol: List[Mol], population_scores, population_size: int, rank_coefficient=0.01, pw_distances=None):
     """
     Given a population of RDKit Mol and their scores, sample a list of the same size
     with replacement using the population_scores as weights
@@ -71,9 +71,11 @@ def make_mating_pool(population_smi, population_mol: List[Mol], population_score
     Returns: a list of RDKit Mol (probably not unique)
     """
     # scores -> probs 
-    if rank_coefficient > 0:
+    if rank_coefficient > 0.0:
         scores_np = np.array(population_scores) + 1e-4  # including invalid molecules
         ranks = np.argsort(np.argsort(-1 * scores_np))
+        if pw_distances is not None:
+            ranks = 0.5 * ranks + 0.5 * np.argsort(np.argsort(-1 * pw_distances))
         weights = 1.0 / (rank_coefficient * len(scores_np) + ranks)
         
         indices = list(torch.utils.data.WeightedRandomSampler(
@@ -134,7 +136,7 @@ class GeneticOperatorHandler:
     def select(self, population_smi, population_scores, novelty=None, rank_coefficient=0.01, replace=False):
         return select_next(population_smi, population_scores, novelty, min(len(population_scores), self.population_size), rank_coefficient, replace=replace)
 
-    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based'):
+    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None):
         # print(mating_pool)
         if mutation_rate is None:
             mutation_rate = self.mutation_rate
@@ -143,8 +145,8 @@ class GeneticOperatorHandler:
         population_scores = mating_pool[1]
 
         # mating pool: List[smiles]
-        if mating_rule == 'rank_based':
-            cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient)
+        if mating_rule.startswith('rank_based'):
+            cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient, pw_distances)
         else:
             cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient=0.)
 
