@@ -20,22 +20,28 @@ import gc
 MINIMUM = 1e-10
 
 
-def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0):
-    seq_a = torch.tensor(model.voc.encode(model.voc.tokenize(parent_a)))
-    seq_b = torch.tensor(model.voc.encode(model.voc.tokenize(parent_b)))
+def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0, top_p=0.9):
+    seq_a = torch.tensor(model.voc.encode(model.voc.tokenize(parent_a))).long()
+    seq_b = torch.tensor(model.voc.encode(model.voc.tokenize(parent_b))).long()
 
     if torch.cuda.is_available():
         seq_a = seq_a.cuda()
         seq_b = seq_b.cuda()
+    # import pdb; pdb.set_trace()
+    # tokens = torch.unique(torch.concat([seq_a, seq_b], axis=0))
 
-    tokens = torch.unique(torch.concat([seq_a, seq_b], axis=0))
-
-    mask = torch.zeros((1, model.voc.vocab_size)).to(seq_a.device)
-    mask[0, tokens.long()] = 1
-    mask[0, model.voc.vocab['EOS']] = 1
-
-    child, _, _ = model.regenerate(1, mask=mask, mutation_rate=mutation_rate, temp=temp) # 0.1)
+    # mask = torch.zeros((1, model.voc.vocab_size)).to(seq_a.device)
+    # mask[0, tokens.long()] = 1
+    # mask[0, model.voc.vocab['EOS']] = 1
+    
+    edge_mask = torch.zeros((model.voc.vocab_size, model.voc.vocab_size)).to(seq_a.device)
+    edge_mask[seq_a[:-1], seq_a[1:]] = 1
+    edge_mask[seq_b[:-1], seq_b[1:]] = 1
+    edge_mask[model.voc.vocab['GO']] = 1
+    # import pdb; pdb.set_trace()
+    child, _, _ = model.regenerate(1, mask=edge_mask, mutation_rate=mutation_rate, temp=temp, top_p=top_p) # 0.1)
     child_smiles = seq_to_smiles(child, model.voc)[0]
+    # import pdb; pdb.set_trace()
 
     return child_smiles
 
@@ -98,7 +104,7 @@ def make_mating_pool(population_smi, population_mol: List[Mol], population_score
     return mating_pool, mating_pool_score
 
 
-def reproduce(mating_pool, mutation_rate, model):
+def reproduce(mating_pool, mutation_rate, model, top_p):
     """
     Args:
         mating_pool: list of RDKit Mol
@@ -112,7 +118,7 @@ def reproduce(mating_pool, mutation_rate, model):
             parent_b = random.choice(mating_pool)
             if parent_a == parent_b:
                 continue
-            new_child = crossover_and_mutate(parent_a, parent_b, model, mutation_rate)  # smiles
+            new_child = crossover_and_mutate(parent_a, parent_b, model, mutation_rate, top_p=top_p)  # smiles
             if new_child is not None:
                 return new_child
         except:
@@ -136,7 +142,7 @@ class GeneticOperatorHandler:
     def select(self, population_smi, population_scores, novelty=None, rank_coefficient=0.01, replace=False):
         return select_next(population_smi, population_scores, novelty, min(len(population_scores), self.population_size), rank_coefficient, replace=replace)
 
-    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None):
+    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None, top_p=0.9):
         # print(mating_pool)
         if mutation_rate is None:
             mutation_rate = self.mutation_rate
@@ -152,7 +158,7 @@ class GeneticOperatorHandler:
 
         # print(model.rnn.device)
 
-        offspring_smi = pool(delayed(reproduce)(cross_mating_pool, mutation_rate, model) for _ in range(query_size))
+        offspring_smi = pool(delayed(reproduce)(cross_mating_pool, mutation_rate, model, top_p) for _ in range(query_size))
         # new_mating_pool = cross_mating_pool
         # new_mating_scores = cross_mating_scores
 

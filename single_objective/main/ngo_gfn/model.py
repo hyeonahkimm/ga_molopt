@@ -68,7 +68,7 @@ class RNN():
             entropy += -torch.sum((log_prob * prob), 1)
         return log_probs, entropy
     
-    def regenerate(self, batch_size, mask, mutation_rate=0.05, max_length=140, temp=1.0):
+    def regenerate(self, batch_size, mask, mutation_rate=0.05, max_length=140, temp=1.0, top_p=0.9):
         """
             Sample a batch of sequences
 
@@ -101,8 +101,22 @@ class RNN():
             log_prob = F.log_softmax(logits / temp, dim = 1)
             ### For NGO ###
             if mask is not None:
+                # import pdb; pdb.set_trace()
                 if torch.rand(1) > mutation_rate:  # mutation - without mask
-                    prob *= mask
+                    sorted_probs, sorted_indices = torch.sort(prob, descending=False)
+                    cumulative_probs = sorted_probs.cumsum(dim=-1)
+                    sorted_indices_to_remove = cumulative_probs <= (1 - top_p)
+                    sorted_indices_to_remove[..., -1:] = 0
+                    
+                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    top_p_probs = prob.masked_fill(indices_to_remove, 0)
+                    new_probs = top_p_probs * mask[x]
+                    
+                    if new_probs.max() > 0:
+                        prob = new_probs
+                    # else:
+                    #     print('infeasible')
+                    # prob *= mask[x]
             ###############
             x = torch.multinomial(prob, num_samples=1).view(-1)
             # x = prob.argmax()

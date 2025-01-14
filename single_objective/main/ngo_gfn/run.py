@@ -223,6 +223,8 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                 # mating_pool = (pop_smis[:config['num_keep']], pop_scores[:config['num_keep']])
                 pop_smis, pop_scores, _ = ga_handler.select(all_smis, all_scores, all_novelty, rank_coefficient=config['rank_coefficient'], replace=False)
                 # population = (pop_smis, pop_scores)
+                if config['novelty_measure'] == 'edge':
+                    pop_smis, pop_scores, valid_pop_seqs = smiles_to_seqs(pop_smis, pop_scores, voc)
                 
                 termination = False
                 for ga_i in range(config['reinitiation_interval']):
@@ -232,10 +234,15 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     else:
                         old_scores = 0
 
-                    pop_distances = get_pw_distances(pop_smis, pop_smis) if 'novelty' in config['mating_rule'] else None
+                    if config['novelty_measure'] == 'edge':
+                        pop_distances = get_pw_seq_distances(valid_pop_seqs, valid_pop_seqs, voc.vocab_size) if 'novelty' in config['mating_rule'] else None
+                    else:
+                        pop_distances = get_pw_distances(pop_smis, pop_smis) if 'novelty' in config['mating_rule'] else None
+                    
                     child_smis, child_n_atoms, _, _ = ga_handler.query(
                             query_size=config['offspring_size'], mating_pool=(pop_smis, pop_scores), pool=pool, model=Agent,
                             rank_coefficient=config['rank_coefficient'], mating_rule=config['mating_rule'], pw_distances=pop_distances,
+                            top_p = config['top_p']
                         )
 
                     child_score = np.array(self.oracle(child_smis))
@@ -243,7 +250,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     
                     # log likelihood to measure novelty
                     # valid_child_smis, valid_child_score = child_smis, child_score.tolist() #
-                    valid_child_smis, valid_child_score, valid_child_seqs = smiles_to_seqs(child_smis, child_score, voc)
+                    # valid_child_smis, valid_child_score, valid_child_seqs = smiles_to_seqs(child_smis, child_score, voc)
 
                     
                     # if config['use_novelty']:
@@ -256,12 +263,28 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                 
                     new_experience = zip(child_smis, child_score)
                     experience.add_experience(new_experience)
-                    pop_smis, pop_scores, _ = ga_handler.select(pop_smis+valid_child_smis, 
-                                                                            pop_scores+valid_child_score, 
-                                                                            # np.concatenate([pop_novelty, child_novelty]) if config['use_novelty'] else None, 
-                                                                            get_pw_distances(pop_smis+valid_child_smis, pop_smis+valid_child_smis) if config['use_novelty'] else None, 
-                                                                            rank_coefficient=config['rank_coefficient'], 
-                                                                            replace=False)
+                    
+                    if config['novelty_measure'] == 'edge':
+                        valid_pop_smis, valid_pop_score, valid_pop_seqs = smiles_to_seqs(pop_smis+child_smis, pop_scores+child_score.tolist(), voc)
+                    
+                        pw_distances = get_pw_seq_distances(valid_pop_seqs, valid_pop_seqs, voc.vocab_size) if config['use_novelty'] else None
+                        pop_smis, pop_scores, _ = ga_handler.select(valid_pop_smis, 
+                                                                                valid_pop_score, 
+                                                                                # np.concatenate([pop_novelty, child_novelty]) if config['use_novelty'] else None, 
+                                                                                pw_distances, 
+                                                                                rank_coefficient=config['rank_coefficient'], 
+                                                                                replace=False)
+                        
+                        pop_smis, pop_scores, valid_pop_seqs = smiles_to_seqs(pop_smis+child_smis, pop_scores+child_score.tolist(), voc)
+                    
+                    else:
+                        valid_child_smis, valid_child_score, valid_child_seqs = smiles_to_seqs(child_smis, child_score, voc)
+                        pop_smis, pop_scores, _ = ga_handler.select(pop_smis+valid_child_smis, 
+                                                                                pop_scores+valid_child_score, 
+                                                                                # np.concatenate([pop_novelty, child_novelty]) if config['use_novelty'] else None, 
+                                                                                get_pw_distances(pop_smis+valid_child_smis, pop_smis+valid_child_smis) if config['use_novelty'] else None, 
+                                                                                rank_coefficient=config['rank_coefficient'], 
+                                                                                replace=False)
                     
                     # pop_novelty = []
                     # for smi in pop_smis:
@@ -293,7 +316,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                                 reward = torch.tensor(exp_score).cuda() if torch.cuda.is_available() else torch.tensor(exp_score)
 
                                 exp_forward_flow = exp_agent_likelihood + log_z
-                                exp_backward_flow = (reward * min(100, config['beta'] * (len(self.oracle) // 500 + 1))) if config['beta_annealing'] else (reward * config['beta'])
+                                exp_backward_flow = (reward * min(1000, config['beta'] * (len(self.oracle) // 500 + 1))) if config['beta_annealing'] else (reward * config['beta'])
                                 # exp_backward_flow = (reward * min(100, config['beta'] * (len(self.oracle) // 200 + 1))) if config['beta_annealing'] else (reward * config['beta'])
                                 
                                 if config['penalty'] == 'rtb':
@@ -381,3 +404,22 @@ def get_pw_distances(new_smiles, ref_smiles):
         novelty_scores.append(np.nan_to_num(dist).mean())
     # novelty_scores = np.nan_to_num(np.array(novelty_scores))
     return np.array(novelty_scores)
+
+
+def get_pw_seq_distances(new_seqs, ref_seqs, vocab_size):
+    ref_masks = []
+    
+    for ref in ref_seqs:
+        edge_mask = torch.zeros((vocab_size, vocab_size)).to(ref.device)
+        edge_mask[ref[:-1].long(), ref[1:].long()] = 1
+        ref_masks.append(edge_mask)
+    ref_masks = torch.stack(ref_masks)
+    
+    dist = []
+    # import pdb; pdb.set_trace()
+    for new in new_seqs:
+        edge_mask = torch.zeros((vocab_size, vocab_size)).to(new.device)
+        edge_mask[new[:-1].long(), new[1:].long()] = 1
+        dist.append((edge_mask[None, :, :]*ref_masks).sum(-1).sum(-1).mean().item())
+        
+    return np.array(dist) * (-1)
