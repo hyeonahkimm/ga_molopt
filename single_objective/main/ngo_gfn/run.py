@@ -146,6 +146,10 @@ class Amortized_GA_Optimizer(BaseOptimizer):
             # Then add new experience
             new_experience = zip(smiles, score)
             experience.add_experience(new_experience)
+            
+            
+            if len(self.oracle) >= config['starting_ga_from']:
+                break
 
             # Experience Replay
             # First sample
@@ -185,8 +189,6 @@ class Amortized_GA_Optimizer(BaseOptimizer):
 
             step += 1
             
-            if len(self.oracle) >= config['starting_ga_from']:
-                break
 
         ############## GA #################
         if config['starting_ga_from'] < 10000:
@@ -194,7 +196,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
             stuck_cnt, patience = 0, 0
             
             while True:
-                if len(self.oracle) < config["population_size"]:
+                if len(self.oracle) == 0:
                     # Exploration run
                     starting_population = np.random.choice(self.all_smiles, config["population_size"])
 
@@ -205,7 +207,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     population_scores = self.oracle([Chem.MolToSmiles(mol) for mol in population_mol])
                     all_smis, all_scores = population_smiles, population_scores
                 else:
-        
+                    
                     self.oracle.sort_buffer()
                     all_smis, all_scores = tuple(map(list, zip(*[(smi, elem[0]) for (smi, elem) in self.oracle.mol_buffer.items()])))
                 
@@ -242,7 +244,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                     child_smis, child_n_atoms, _, _ = ga_handler.query(
                             query_size=config['offspring_size'], mating_pool=(pop_smis, pop_scores), pool=pool, model=Agent,
                             rank_coefficient=config['rank_coefficient'], mating_rule=config['mating_rule'], pw_distances=pop_distances,
-                            top_p = config['top_p']
+                            top_p = config['top_p'], dist_rank=len(self.oracle)/10000
                         )
 
                     child_score = np.array(self.oracle(child_smis))
@@ -273,7 +275,8 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                                                                                 # np.concatenate([pop_novelty, child_novelty]) if config['use_novelty'] else None, 
                                                                                 pw_distances, 
                                                                                 rank_coefficient=config['rank_coefficient'], 
-                                                                                replace=False)
+                                                                                replace=False,
+                                                                                dist_rank = len(self.oracle)/10000)
                         
                         pop_smis, pop_scores, valid_pop_seqs = smiles_to_seqs(pop_smis+child_smis, pop_scores+child_score.tolist(), voc)
                     
@@ -284,7 +287,8 @@ class Amortized_GA_Optimizer(BaseOptimizer):
                                                                                 # np.concatenate([pop_novelty, child_novelty]) if config['use_novelty'] else None, 
                                                                                 get_pw_distances(pop_smis+valid_child_smis, pop_smis+valid_child_smis) if config['use_novelty'] else None, 
                                                                                 rank_coefficient=config['rank_coefficient'], 
-                                                                                replace=False)
+                                                                                replace=False,
+                                                                                dist_rank=len(self.oracle)/10000)
                     
                     # pop_novelty = []
                     # for smi in pop_smis:

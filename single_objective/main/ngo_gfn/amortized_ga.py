@@ -28,11 +28,11 @@ def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0
         seq_a = seq_a.cuda()
         seq_b = seq_b.cuda()
     # import pdb; pdb.set_trace()
-    # tokens = torch.unique(torch.concat([seq_a, seq_b], axis=0))
+    tokens = torch.unique(torch.concat([seq_a, seq_b], axis=0))
 
-    # mask = torch.zeros((1, model.voc.vocab_size)).to(seq_a.device)
-    # mask[0, tokens.long()] = 1
-    # mask[0, model.voc.vocab['EOS']] = 1
+    mask = torch.zeros((1, model.voc.vocab_size)).to(seq_a.device)
+    mask[0, tokens.long()] = 1
+    mask[0, model.voc.vocab['EOS']] = 1
     
     edge_mask = torch.zeros((model.voc.vocab_size, model.voc.vocab_size)).to(seq_a.device)
     edge_mask[seq_a[:-1], seq_a[1:]] = 1
@@ -46,11 +46,11 @@ def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0
     return child_smiles
 
 
-def select_next(population_smi, population_scores, novelty, population_size: int, rank_coefficient=0.01, replace=False):
+def select_next(population_smi, population_scores, novelty, population_size: int, rank_coefficient=0.01, replace=False, dist_rank=0.5):
     scores_np = np.array(population_scores) + 1e-4  # including invalid molecules
     ranks = np.argsort(np.argsort(-1 * scores_np))
     if novelty is not None:
-        ranks = 0.5 * ranks + 0.5 * np.argsort(np.argsort(-1 * novelty))
+        ranks = (1-dist_rank) * ranks + dist_rank * np.argsort(np.argsort(-1 * novelty))
     weights = 1.0 / (rank_coefficient * len(scores_np) + ranks)
     
     indices = list(torch.utils.data.WeightedRandomSampler(
@@ -66,7 +66,7 @@ def select_next(population_smi, population_scores, novelty, population_size: int
     return next_pop, next_pop_score, None
 
 
-def make_mating_pool(population_smi, population_mol: List[Mol], population_scores, population_size: int, rank_coefficient=0.01, pw_distances=None):
+def make_mating_pool(population_smi, population_mol: List[Mol], population_scores, population_size: int, rank_coefficient=0.01, pw_distances=None, dist_rank=0.5):
     """
     Given a population of RDKit Mol and their scores, sample a list of the same size
     with replacement using the population_scores as weights
@@ -81,7 +81,7 @@ def make_mating_pool(population_smi, population_mol: List[Mol], population_score
         scores_np = np.array(population_scores) + 1e-4  # including invalid molecules
         ranks = np.argsort(np.argsort(-1 * scores_np))
         if pw_distances is not None:
-            ranks = 0.5 * ranks + 0.5 * np.argsort(np.argsort(-1 * pw_distances))
+            ranks = (1 - dist_rank) * ranks + dist_rank * np.argsort(np.argsort(-1 * pw_distances))
         weights = 1.0 / (rank_coefficient * len(scores_np) + ranks)
         
         indices = list(torch.utils.data.WeightedRandomSampler(
@@ -139,10 +139,10 @@ class GeneticOperatorHandler:
     # def get_final_population(self, mating_pool, rank_coefficient=0.):
     #     new_mating_pool, new_mating_scores, _, _ = make_mating_pool(mating_pool[0], mating_pool[1], self.population_size, rank_coefficient)
     #     return (new_mating_pool, new_mating_scores)
-    def select(self, population_smi, population_scores, novelty=None, rank_coefficient=0.01, replace=False):
-        return select_next(population_smi, population_scores, novelty, min(len(population_scores), self.population_size), rank_coefficient, replace=replace)
+    def select(self, population_smi, population_scores, novelty=None, rank_coefficient=0.01, replace=False, dist_rank=0.5):
+        return select_next(population_smi, population_scores, novelty, min(len(population_scores), self.population_size), rank_coefficient, replace=replace, dist_rank=dist_rank)
 
-    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None, top_p=0.9):
+    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None, top_p=0.9, dist_rank=0.5):
         # print(mating_pool)
         if mutation_rate is None:
             mutation_rate = self.mutation_rate
@@ -152,7 +152,7 @@ class GeneticOperatorHandler:
 
         # mating pool: List[smiles]
         if mating_rule.startswith('rank_based'):
-            cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient, pw_distances)
+            cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient, pw_distances, dist_rank)
         else:
             cross_mating_pool, cross_mating_scores = make_mating_pool(population_smi, population_mol, population_scores, self.population_size, rank_coefficient=0.)
 
