@@ -111,6 +111,13 @@ class Amortized_GA_Optimizer(BaseOptimizer):
             if len(self.oracle) > 1000:
                 self.sort_buffer()
                 new_scores = [item[1][0] for item in list(self.mol_buffer.items())[:100]]
+                
+                # save checkpoint 
+                if (len(self.oracle) // 1000) != (prev_n_oracles // 1000):
+                    # import pdb; pdb.set_trace()
+                    torch.save(Agent.rnn.state_dict(), f"main/ngo_reinvent/data/ckpt/agent_{self.oracle.task_label}_{1000*(len(self.mol_buffer)//1000)}.ckpt")
+                    self.save_intermediate_result()             
+                
                 if new_scores == old_scores:
                     patience += 1
                     if patience >= self.args.patience:

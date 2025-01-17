@@ -116,7 +116,7 @@ class Amortized_GA_Optimizer(BaseOptimizer):
 
                 # save checkpoint 
                 if (len(self.oracle) // 1000) != (prev_n_oracles // 1000):
-                    import pdb; pdb.set_trace()
+                    # import pdb; pdb.set_trace()
                     torch.save(Agent.rnn.state_dict(), f"main/ngo_gfn/data/ckpt/agent_{self.oracle.task_label}_{1000*(len(self.mol_buffer)//1000)}.ckpt")
                     torch.save(log_z, f"main/ngo_gfn/data/ckpt/logz_{self.oracle.task_label}_{1000*(len(self.mol_buffer)//1000)}.ckpt")
                     self.save_intermediate_result()    
