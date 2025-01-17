@@ -348,7 +348,7 @@ class BaseOptimizer:
 
     def optimize(self, oracle, config, seed=0):
         if self.args.wandb != 'disabled':
-            project = 'NeuralGA-PMO'
+            project = 'NeuralGA-PMO2'
             run = wandb.init(project=project, group=oracle.name, config=config, reinit=True)
             wandb.config.run_name = self.args.run_name
             wandb.config.oracle = oracle.name

@@ -49,6 +49,8 @@ def main():
         from main.ngo.run import GA_Optimizer as Optimizer
     elif args.method == 'ngo_gfn':
         from main.ngo_gfn.run import Amortized_GA_Optimizer as Optimizer
+    elif args.method == 'ngo_reinvent':
+        from main.ngo_reinvent.run import Amortized_GA_Optimizer as Optimizer
 
 
     if args.output_dir is None:

@@ -20,7 +20,7 @@ import gc
 MINIMUM = 1e-10
 
 
-def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0, top_p=0.9):
+def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0, top_p=0.9, chromosome='edge'):
     seq_a = torch.tensor(model.voc.encode(model.voc.tokenize(parent_a))).long()
     seq_b = torch.tensor(model.voc.encode(model.voc.tokenize(parent_b))).long()
 
@@ -39,7 +39,10 @@ def crossover_and_mutate(parent_a, parent_b, model, mutation_rate=0.05, temp=1.0
     edge_mask[seq_b[:-1], seq_b[1:]] = 1
     edge_mask[model.voc.vocab['GO']] = 1
     # import pdb; pdb.set_trace()
-    child, _, _ = model.regenerate(1, mask=edge_mask, mutation_rate=mutation_rate, temp=temp, top_p=top_p) # 0.1)
+    if chromosome == 'edge':
+        child, _, _ = model.regenerate(1, mask=mask, mutation_rate=mutation_rate, temp=temp, top_p=top_p) # 0.1)
+    else:
+        child, _, _ = model.regenerate(1, mask=mask, mutation_rate=mutation_rate, temp=temp, top_p=top_p) # 0.1)
     child_smiles = seq_to_smiles(child, model.voc)[0]
     # import pdb; pdb.set_trace()
 
@@ -104,7 +107,7 @@ def make_mating_pool(population_smi, population_mol: List[Mol], population_score
     return mating_pool, mating_pool_score
 
 
-def reproduce(mating_pool, mutation_rate, model, top_p):
+def reproduce(mating_pool, mutation_rate, model, top_p, chromosome):
     """
     Args:
         mating_pool: list of RDKit Mol
@@ -118,7 +121,7 @@ def reproduce(mating_pool, mutation_rate, model, top_p):
             parent_b = random.choice(mating_pool)
             if parent_a == parent_b:
                 continue
-            new_child = crossover_and_mutate(parent_a, parent_b, model, mutation_rate, top_p=top_p)  # smiles
+            new_child = crossover_and_mutate(parent_a, parent_b, model, mutation_rate, top_p=top_p, chromosome=chromosome)  # smiles
             if new_child is not None:
                 return new_child
         except:
@@ -142,7 +145,7 @@ class GeneticOperatorHandler:
     def select(self, population_smi, population_scores, novelty=None, rank_coefficient=0.01, replace=False, dist_rank=0.5):
         return select_next(population_smi, population_scores, novelty, min(len(population_scores), self.population_size), rank_coefficient, replace=replace, dist_rank=dist_rank)
 
-    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None, top_p=0.9, dist_rank=0.5):
+    def query(self, query_size, mating_pool, pool, model=None, rank_coefficient=0.01, mutation_rate=None, mating_rule='rank_based', pw_distances=None, top_p=0.9, dist_rank=0.5, chromosome='edge'):
         # print(mating_pool)
         if mutation_rate is None:
             mutation_rate = self.mutation_rate
@@ -158,7 +161,7 @@ class GeneticOperatorHandler:
 
         # print(model.rnn.device)
 
-        offspring_smi = pool(delayed(reproduce)(cross_mating_pool, mutation_rate, model, top_p) for _ in range(query_size))
+        offspring_smi = pool(delayed(reproduce)(cross_mating_pool, mutation_rate, model, top_p, chromosome) for _ in range(query_size))
         # new_mating_pool = cross_mating_pool
         # new_mating_scores = cross_mating_scores
 
