@@ -72,13 +72,9 @@ def main():
         optimizer = Optimizer(args=args)
         print(config_default)
 
-
-
         for seed in args.seed:
             print('seed', seed)
             optimizer.optimize(oracle=oracle, config=config_default, seed=seed)
-
-
 
     end_time = time()
     hours = (end_time - start_time) / 3600.0

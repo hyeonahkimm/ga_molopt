@@ -308,7 +308,7 @@ class BaseOptimizer:
 
     def save_intermediate_result(self):
         print("Saving molecules...")
-        output_file_path = os.path.join(self.args.output_dir, 'inter_' + self.oracle.task_label + '.yaml')
+        output_file_path = os.path.join(self.args.log_dir, self.oracle.task_label + f'_{1000*(len(self.mol_buffer)//1000)}.yaml')
         self.sort_buffer()
         with open(output_file_path, 'w') as f:
             yaml.dump(self.mol_buffer, f, sort_keys=False)
@@ -347,22 +347,23 @@ class BaseOptimizer:
         raise NotImplementedError
 
     def optimize(self, oracle, config, seed=0):
+        oracle_name = oracle.name.split('_current')[0]
         if self.args.wandb != 'disabled':
             project = 'NeuralGA-PMO2'
-            run = wandb.init(project=project, group=oracle.name, config=config, reinit=True)
+            run = wandb.init(project=project, group=oracle_name, config=config, reinit=True)
             wandb.config.run_name = self.args.run_name
-            wandb.config.oracle = oracle.name
+            wandb.config.oracle = oracle_name
             wandb.config.method = self.args.method
-            wandb.run.name = oracle.name + "_" + self.args.method + "_" + self.args.run_name + "_" + str(seed) + "_" + wandb.run.id
+            wandb.run.name = oracle_name + "_" + self.args.method + "_" + self.args.run_name + "_" + str(seed) + "_" + wandb.run.id
             
         np.random.seed(seed)
         torch.manual_seed(seed)
         random.seed(seed)
         self.seed = seed
-        self.oracle.task_label = self.args.method + "_" + oracle.name + "_" + str(seed)
+        self.oracle.task_label = self.args.method + "_" + oracle_name + "_" + str(seed)
         self._optimize(oracle, config)
         if self.args.log_results:
             self.log_result()
-        self.save_result(self.args.method + "_" + oracle.name + "_" + str(seed))
+        self.save_result(self.args.method + "_" + oracle_name + "_" + str(seed))
         self.reset()
 

@@ -103,16 +103,16 @@ class RNN():
             if mask is not None:
                 # import pdb; pdb.set_trace()
                 if torch.rand(1) > mutation_rate:  # mutation - without mask
-                    sorted_probs, sorted_indices = torch.sort(prob, descending=False)
-                    cumulative_probs = sorted_probs.cumsum(dim=-1)
-                    sorted_indices_to_remove = cumulative_probs <= (1 - top_p)
-                    sorted_indices_to_remove[..., -1:] = 0
+                    if mask.size(0) > 1:  # chromosome: edge
+                        sorted_probs, sorted_indices = torch.sort(prob, descending=False)
+                        cumulative_probs = sorted_probs.cumsum(dim=-1)
+                        sorted_indices_to_remove = cumulative_probs <= (1 - top_p)
+                        sorted_indices_to_remove[..., -1:] = 0
+                        
+                        indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                        top_p_probs = prob.masked_fill(indices_to_remove, 0)
+                        new_probs = top_p_probs * mask[x]
                     
-                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    top_p_probs = prob.masked_fill(indices_to_remove, 0)
-                    new_probs = top_p_probs * mask[x]
-                    
-                    if mask.size(0) > 1:
                         # import pdb; pdb.set_trace()
                         if (new_probs == 0).all():
                             # import pdb; pdb.set_trace()

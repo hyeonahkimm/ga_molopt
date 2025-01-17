@@ -103,23 +103,24 @@ class RNN():
             if mask is not None:
                 # import pdb; pdb.set_trace()
                 if torch.rand(1) > mutation_rate:  # mutation - without mask
-                    # sorted_probs, sorted_indices = torch.sort(prob, descending=False)
-                    # cumulative_probs = sorted_probs.cumsum(dim=-1)
-                    # sorted_indices_to_remove = cumulative_probs <= (1 - top_p)
-                    # sorted_indices_to_remove[..., -1:] = 0
-                    
-                    # indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    # top_p_probs = prob.masked_fill(indices_to_remove, 0)
-                    # new_probs = top_p_probs * mask[x]
-                    
-                    if mask.size(0) > 1:
-                        new_probs = prob * mask[x]
+                    if mask.size(0) > 1:  # chromosome: edge
+                        sorted_probs, sorted_indices = torch.sort(prob, descending=False)
+                        cumulative_probs = sorted_probs.cumsum(dim=-1)
+                        sorted_indices_to_remove = cumulative_probs <= (1 - top_p)
+                        sorted_indices_to_remove[..., -1:] = 0
                         
-                        if new_probs.max() > 0:
+                        indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                        top_p_probs = prob.masked_fill(indices_to_remove, 0)
+                        new_probs = top_p_probs * mask[x]
+                    
+                        # import pdb; pdb.set_trace()
+                        if (new_probs == 0).all():
+                            # import pdb; pdb.set_trace()
+                            # print('infeasible')
+                            pass
+                        else:
+                            # prob = prob * mask[x]  #
                             prob = new_probs
-                        # else:
-                        #     # import pdb; pdb.set_trace()
-                        #     print('infeasible')
                     else:
                         prob *= mask
             ###############
@@ -132,7 +133,10 @@ class RNN():
             x = Variable(x.data)
             EOS_sampled = (x == self.voc.vocab['EOS']).data
             finished = torch.ge(finished + EOS_sampled, 1)
-            if torch.prod(finished) == 1: break
+            if torch.prod(finished) == 1:
+                if step < 10:
+                    print(step)
+                break
 
         sequences = torch.cat(sequences, 1)
         return sequences.data, log_probs, entropy
